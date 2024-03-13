@@ -4,7 +4,8 @@
 '''data type: R101 or C101 from solomon dataset'''
 import numpy as np
 import pandas as pd
-from gurobipy import *
+# from gurobipy import *
+import gurobipy as gp
 import matplotlib.pyplot as plt
 import random
 import time
@@ -166,7 +167,7 @@ def printSolution(data,solution):
 '''建模和求解。使用Gurobi对问题进行建模'''
 def modelingAndSolve(data,M):
     # 建立模型
-    m = Model('CVRPTW')
+    m = gp.Model('CVRPTW')
     # 模型设置：由于存在函数printSolution，因此关闭输出;以及容许误差
     m.setParam('MIPGap', 0.05)
     # m.setParam('OutputFlag', 0)
@@ -186,38 +187,38 @@ def modelingAndSolve(data,M):
     for k in range(0,data.nodeNum):
         for i in range(0,data.nodeNum):
             S_set.append((i, k))
-    X_set_tplst = tuplelist(X_set)
-    S_set_tplst = tuplelist(S_set)
+    X_set_tplst = gp.tuplelist(X_set)
+    S_set_tplst = gp.tuplelist(S_set)
     # Step2.根据索引，为模型建立变量
-    x = m.addVars(X_set_tplst, vtype=GRB.BINARY, name='x')
-    s = m.addVars(S_set_tplst, vtype=GRB.CONTINUOUS, lb=0.0,  name='s')  # 非负连续变量
+    x = m.addVars(X_set_tplst, vtype=gp.GRB.BINARY, name='x')
+    s = m.addVars(S_set_tplst, vtype=gp.GRB.CONTINUOUS, lb=0.0,  name='s')  # 非负连续变量
     m.update()
     # 定义目标函数
-    m.setObjective(quicksum(x[i, j, k] * data.distanceMatrix[i, j] for i, j, k in X_set_tplst), sense=GRB.MINIMIZE)
+    m.setObjective(gp.quicksum(x[i, j, k] * data.distanceMatrix[i, j] for i, j, k in X_set_tplst), sense=gp.GRB.MINIMIZE)
 
     # 定义约束条件:
     # 1.客户点服务一次约束
-    m.addConstrs((quicksum(x[i, j, k] for i, j, k in X_set_tplst.select(I, '*', '*')) == 1 for I in data.customerId),'-')
+    m.addConstrs((gp.quicksum(x[i, j, k] for i, j, k in X_set_tplst.select(I, '*', '*')) == 1 for I in data.customerId),'-')
     # 2.起点流出约束
-    m.addConstrs((quicksum(x[i, j, k] for i, j, k in X_set_tplst.select(0, '*', K)) == 1 for K in data.vehicleId),'-')
+    m.addConstrs((gp.quicksum(x[i, j, k] for i, j, k in X_set_tplst.select(0, '*', K)) == 1 for K in data.vehicleId),'-')
     # 3.终点流入约束
-    m.addConstrs((quicksum(x[i, j, k] for i, j, k in X_set_tplst.select('*', data.customerNum+1, K)) == 1 for K in data.vehicleId),'-')
+    m.addConstrs((gp.quicksum(x[i, j, k] for i, j, k in X_set_tplst.select('*', data.customerNum+1, K)) == 1 for K in data.vehicleId),'-')
     # 4.流平衡约束
-    m.addConstrs((quicksum(x[i, h, k] for i, h, k in X_set_tplst.select('*',H, K))-quicksum(x[h, j, k] for h, j, k in X_set_tplst.select(H, '*', K)) == 0 for H,K in product(data.customerId, data.vehicleId)),'-')
+    m.addConstrs((gp.quicksum(x[i, h, k] for i, h, k in X_set_tplst.select('*',H, K))-gp.quicksum(x[h, j, k] for h, j, k in X_set_tplst.select(H, '*', K)) == 0 for H,K in product(data.customerId, data.vehicleId)),'-')
     # 5.时间窗约束（1）
     m.addConstrs((s[i, k] + data.distanceMatrix[i][j] - M * (1 - x[i, j, k]) <= s[j, k] for i, j, k in X_set_tplst),'-')  # 保证变量s可行性，这里注意将t_ij用c_ij进行了代替
     # 6.时间窗约束（2）
     m.addConstrs((s[i, k] >= data.readyTime[i] for i, k in S_set_tplst), 'LowerBound')  # 保证时间戳不小于时间窗的下界
     m.addConstrs((s[i, k] <= data.dueTime[i] for i, k in S_set_tplst), 'UpperBound')  # 保证时间戳不大于时间窗的上界
     # 7. 容量约束
-    m.addConstrs((quicksum(data.demand[i] * x[i, j, k] for i, j, k in X_set_tplst.select('*', '*', K)) <= data.capacity for K in data.vehicleId), '-')
+    m.addConstrs((gp.quicksum(data.demand[i] * x[i, j, k] for i, j, k in X_set_tplst.select('*', '*', K)) <= data.capacity for K in data.vehicleId), '-')
 
     # 记录求解开始时间
     start_time = time.time()
     # 求解
     m.optimize()
     m.write('CVRPTW.lp')
-    if m.status == GRB.OPTIMAL:
+    if m.status == gp.GRB.OPTIMAL:
         print("-" * 20, "求解成功", '-' * 20)
         # 输出求解总用时
         print(f"求解时间: {time.time() - start_time} s")
@@ -235,7 +236,7 @@ def modelingAndSolve(data,M):
 '''主函数，调用函数实现问题的求解'''
 if __name__ =="__main__":
     # 数据集路径
-    data_path = r'C:\Users\张晨皓\Desktop\张晨皓的汇报内容\50.几种常见的VRP及Gurobi实现\程序代码\data\R101network.txt'  # 这里是节点文件
+    data_path = r'C:\Users\Administrator\Desktop\Gurobi-and-Algorithm-for-solving-VRP\data\R101network.txt'  # 这里是节点文件
     customerNum = 25
     vehicleNum = 6
     capacity = 100

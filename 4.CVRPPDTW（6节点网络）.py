@@ -7,7 +7,8 @@
 '''data type: the service network based on the six node transportation network'''
 import numpy as np
 import pandas as pd
-from gurobipy import *
+# from gurobipy import *
+import gurobipy as gp
 import matplotlib.pyplot as plt
 import random
 import time
@@ -51,7 +52,7 @@ def readData(path, vehicleNum, capacity):
     data.capacity = capacity
     data_df = pd.read_csv(path)
 
-    SP_data = pd.read_csv(r'C:\Users\张晨皓\Desktop\张晨皓的汇报内容\50.几种常见的VRP及Gurobi实现\程序代码\data\six_networkSP.txt')
+    SP_data = pd.read_csv(r'C:\Users\Administrator\Desktop\Gurobi-and-Algorithm-for-solving-VRP\data\six_networkSP.txt')
     total_mtx = np.zeros((len(data_df), len(data_df)))
     for i in range(0, len(SP_data)):
         x_index = SP_data.loc[i, 'from'] - 1
@@ -180,7 +181,7 @@ def printSolution(data,solution):
 '''建模和求解。使用Gurobi对问题进行建模'''
 def modelingAndSolve(data):
     # 建立模型
-    m = Model('CVRPPDTW')
+    m = gp.Model('CVRPPDTW')
     # 模型设置：由于存在函数printSolution，因此关闭输出;以及容许误差
     m.setParam('MIPGap', 0.05)
     # m.setParam('OutputFlag', 0)
@@ -195,7 +196,7 @@ def modelingAndSolve(data):
         for i in i_set:
             for j in j_set:
                     X_set.append((i, j, k))
-    X_set_tplst = tuplelist(X_set)
+    X_set_tplst = gp.tuplelist(X_set)
 
     X_notequal_set = []  # V中排除了ij相等的情况
     for k in k_set:
@@ -203,42 +204,42 @@ def modelingAndSolve(data):
             for j in j_set:
                 if i!= j:
                     X_notequal_set.append((i, j, k))
-    X_notequal_set_tplst = tuplelist(X_notequal_set)
+    X_notequal_set_tplst = gp.tuplelist(X_notequal_set)
 
     S_set = []  # 车辆时间戳辅助变量
     for k in k_set:
         for i in range(0, data.nodeNum):
             S_set.append((i, k))
-    S_set_tplst = tuplelist(S_set)
+    S_set_tplst = gp.tuplelist(S_set)
 
     Q_set = []  # 车辆载重辅助变量
     for k in k_set:
         for i in range(0, data.nodeNum):
             Q_set.append((i, k))
-    Q_set_tplst = tuplelist(Q_set)
+    Q_set_tplst = gp.tuplelist(Q_set)
     Q_bound_set = [i for i in range(data.nodeNum)]
     # Step2.根据索引，为模型建立变量
-    x = m.addVars(X_set_tplst, vtype=GRB.BINARY, name='x')
-    s = m.addVars(S_set_tplst, vtype=GRB.CONTINUOUS, lb=0.0, name='s')  # 非负连续变量
-    q = m.addVars(Q_set_tplst, vtype=GRB.CONTINUOUS, lb=0.0, name='q')
-    q_lower = m.addVars(Q_bound_set, vtype=GRB.CONTINUOUS, lb=0.0, name='q_lower')
-    q_upper = m.addVars(Q_bound_set, vtype=GRB.CONTINUOUS, lb=0.0, name='q_upper')
+    x = m.addVars(X_set_tplst, vtype=gp.GRB.BINARY, name='x')
+    s = m.addVars(S_set_tplst, vtype=gp.GRB.CONTINUOUS, lb=0.0, name='s')  # 非负连续变量
+    q = m.addVars(Q_set_tplst, vtype=gp.GRB.CONTINUOUS, lb=0.0, name='q')
+    q_lower = m.addVars(Q_bound_set, vtype=gp.GRB.CONTINUOUS, lb=0.0, name='q_lower')
+    q_upper = m.addVars(Q_bound_set, vtype=gp.GRB.CONTINUOUS, lb=0.0, name='q_upper')
     m.update()
     # print(m.getVars())
     # 定义目标函数
-    m.setObjective(quicksum(x[i, j, k] * data.distanceMatrix[i, j] for i, j, k in X_set_tplst), sense=GRB.MINIMIZE)
+    m.setObjective(gp.quicksum(x[i, j, k] * data.distanceMatrix[i, j] for i, j, k in X_set_tplst), sense=gp.GRB.MINIMIZE)
 
     # 定义约束条件:
     # 1.接客点服务一次约束
-    m.addConstrs((quicksum(x[i, j, k] for i, j, k in X_set_tplst.select(I, '*', '*')) == 1 for I in data.pickupId),'-')
+    m.addConstrs((gp.quicksum(x[i, j, k] for i, j, k in X_set_tplst.select(I, '*', '*')) == 1 for I in data.pickupId),'-')
     # 2.起点流出约束
-    m.addConstrs((quicksum(x[i, j, k] for i, j, k in X_notequal_set_tplst.select(0, '*', K)) == 1 for K in data.vehicleId),'-')
+    m.addConstrs((gp.quicksum(x[i, j, k] for i, j, k in X_notequal_set_tplst.select(0, '*', K)) == 1 for K in data.vehicleId),'-')
     # 3.终点流入约束
-    m.addConstrs((quicksum(x[i, j, k] for i, j, k in X_notequal_set_tplst.select('*', 5, K)) == 1 for K in data.vehicleId),'-')
+    m.addConstrs((gp.quicksum(x[i, j, k] for i, j, k in X_notequal_set_tplst.select('*', 5, K)) == 1 for K in data.vehicleId),'-')
     # 4.流平衡约束
-    m.addConstrs((quicksum(x[j, i, k] for j, i, k in X_set_tplst.select('*', I, K)) - quicksum(x[i, j, k] for i, j, k in X_set_tplst.select(I, '*', K)) == 0 for I, K in product(data.customerId, data.vehicleId)), '-')
+    m.addConstrs((gp.quicksum(x[j, i, k] for j, i, k in X_set_tplst.select('*', I, K)) - gp.quicksum(x[i, j, k] for i, j, k in X_set_tplst.select(I, '*', K)) == 0 for I, K in product(data.customerId, data.vehicleId)), '-')
     # 5.接客和落客约束
-    m.addConstrs((quicksum(x[i, j, k] for i, j, k in X_set_tplst.select(I, '*', K))- quicksum(x[i+2, j, k] for i, j, k in X_set_tplst.select(I, '*', K)) == 0 for I, K in product(data.pickupId, data.vehicleId)),'-')
+    m.addConstrs((gp.quicksum(x[i, j, k] for i, j, k in X_set_tplst.select(I, '*', K))- gp.quicksum(x[i+2, j, k] for i, j, k in X_set_tplst.select(I, '*', K)) == 0 for I, K in product(data.pickupId, data.vehicleId)),'-')
 
     # 6.时间窗约束（1）
     m.addConstrs((x[i, j, k]*(s[i, k] + data.distanceMatrix[i][j]+data.serviceTime[i]) <= s[j, k] for i, j, k in X_set_tplst),'-')  # 保证变量s可行性，这里注意将t_ij用c_ij进行了代替
@@ -258,7 +259,7 @@ def modelingAndSolve(data):
     # 求解
     m.optimize()
     m.write('CVRPPDTW.lp')
-    if m.status == GRB.OPTIMAL:
+    if m.status == gp.GRB.OPTIMAL:
         print("-" * 20, "求解成功", '-' * 20)
         # 输出求解总用时
         print(f"求解时间: {time.time() - start_time} s")
@@ -275,7 +276,7 @@ def modelingAndSolve(data):
 '''主函数，调用函数实现问题的求解'''
 if __name__ =="__main__":
     # 数据集路径
-    data_path = r'C:\Users\张晨皓\Desktop\张晨皓的汇报内容\50.几种常见的VRP及Gurobi实现\程序代码\data\six_network.txt'  # 这里是节点文件
+    data_path = r'C:\Users\Administrator\Desktop\Gurobi-and-Algorithm-for-solving-VRP\data\six_network.txt'  # 这里是节点文件
     customerNum = 2
     vehicleNum = 5
     capacity = 3

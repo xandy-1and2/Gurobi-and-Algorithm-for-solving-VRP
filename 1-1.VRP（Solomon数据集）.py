@@ -4,7 +4,8 @@
 '''data type: R101 or C101 from solomon dataset'''
 import numpy as np
 import pandas as pd
-from gurobipy import *
+# from gurobipy import *
+import gurobipy as gp
 import matplotlib.pyplot as plt
 import random
 import time
@@ -166,7 +167,7 @@ def printSolution(data,solution):
 '''建模和求解。使用Gurobi对问题进行建模'''
 def modelingAndSolve(data):
     # 建立模型
-    m = Model('VRP')
+    m = gp.Model('VRP')
     # 模型设置：由于存在函数printSolution，因此关闭输出;以及容许误差
     m.setParam('MIPGap', 0.05)
     # m.setParam('OutputFlag', 0)
@@ -193,25 +194,25 @@ def modelingAndSolve(data):
                 if i != j:
                     MTZ_X_set.append((i, j, k))
 
-    X_set_tplst = tuplelist(X_set)
-    U_set_tplst = tuplelist(U_set)
-    MTZ_X_set_tplst = tuplelist(MTZ_X_set)
+    X_set_tplst = gp.tuplelist(X_set)
+    U_set_tplst = gp.tuplelist(U_set)
+    MTZ_X_set_tplst = gp.tuplelist(MTZ_X_set)
     # Step2.根据索引，为模型建立变量
-    x = m.addVars(X_set_tplst, vtype=GRB.BINARY, name='x')
-    u = m.addVars(U_set_tplst, vtype=GRB.CONTINUOUS, lb=0.0,  name='u')  # 非负连续变量
+    x = m.addVars(X_set_tplst, vtype=gp.GRB.BINARY, name='x')
+    u = m.addVars(U_set_tplst, vtype=gp.GRB.CONTINUOUS, lb=0.0,  name='u')  # 非负连续变量
     m.update()
     # 定义目标函数
-    m.setObjective(quicksum(x[i, j, k] * data.distanceMatrix[i, j] for i, j, k in X_set_tplst), sense=GRB.MINIMIZE)
+    m.setObjective(gp.quicksum(x[i, j, k] * data.distanceMatrix[i, j] for i, j, k in X_set_tplst), sense=gp.GRB.MINIMIZE)
 
     # 定义约束条件:
     # 1.客户点服务一次约束
-    m.addConstrs((quicksum(x[i, j, k] for i, j, k in X_set_tplst.select(I, '*', '*')) == 1 for I in data.customerId),'-')
+    m.addConstrs((gp.quicksum(x[i, j, k] for i, j, k in X_set_tplst.select(I, '*', '*')) == 1 for I in data.customerId),'-')
     # 2.起点流出约束
-    m.addConstrs((quicksum(x[i, j, k] for i, j, k in X_set_tplst.select(0, '*', K)) == 1 for K in data.vehicleId),'-')
+    m.addConstrs((gp.quicksum(x[i, j, k] for i, j, k in X_set_tplst.select(0, '*', K)) == 1 for K in data.vehicleId),'-')
     # 3.终点流入约束
-    m.addConstrs((quicksum(x[i, j, k] for i, j, k in X_set_tplst.select('*', data.customerNum+1, K)) == 1 for K in data.vehicleId),'-')
+    m.addConstrs((gp.quicksum(x[i, j, k] for i, j, k in X_set_tplst.select('*', data.customerNum+1, K)) == 1 for K in data.vehicleId),'-')
     # 4.流平衡约束
-    m.addConstrs((quicksum(x[i, h, k] for i, h, k in X_set_tplst.select('*',H, K))-quicksum(x[h, j, k] for h, j, k in X_set_tplst.select(H, '*', K)) == 0 for H,K in product(data.customerId, data.vehicleId)),'-')
+    m.addConstrs((gp.quicksum(x[i, h, k] for i, h, k in X_set_tplst.select('*',H, K))-gp.quicksum(x[h, j, k] for h, j, k in X_set_tplst.select(H, '*', K)) == 0 for H,K in product(data.customerId, data.vehicleId)),'-')
     # 5.破子圈约束
     m.addConstrs((u[i, k] - u[j, k] + data.nodeNum * x[i, j, k] <= data.nodeNum - 1 for i, j, k in MTZ_X_set_tplst),'-')  # MTZ约束
 
@@ -220,7 +221,7 @@ def modelingAndSolve(data):
     # 求解
     m.optimize()
     m.write('VRP.lp')
-    if m.status == GRB.OPTIMAL:
+    if m.status == gp.GRB.OPTIMAL:
         print("-" * 20, "求解成功", '-' * 20)
         # 输出求解总用时
         print(f"求解时间: {time.time() - start_time} s")
@@ -238,7 +239,7 @@ def modelingAndSolve(data):
 '''主函数，调用函数实现问题的求解'''
 if __name__ =="__main__":
     # 数据集路径
-    data_path = r'C:\Users\张晨皓\Desktop\张晨皓的汇报内容\50.几种常见的VRP及Gurobi实现\程序代码\data\R101network.txt'  # 这里是节点文件
+    data_path = r'C:\Users\Administrator\Desktop\Gurobi-and-Algorithm-for-solving-VRP\data\R101network.txt'  # 这里是节点文件
     customerNum = 25
     vehicleNum = 5
     capacity = 100
